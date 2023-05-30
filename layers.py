@@ -51,6 +51,9 @@ class PositionalEncoding(nn.Module):
 
 
 class MLP(nn.Module):
+    '''
+    公式(1)的MLP的具体实现
+    '''
     def __init__(self, hidden_dim=[1000, 2048, 512], act=nn.Tanh()):
         super(MLP, self).__init__()
         self.input_dim = hidden_dim[0]

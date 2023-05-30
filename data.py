@@ -17,17 +17,17 @@ paths = {
 def load_data(DATANAME):
     data = h5py.File(paths[DATANAME], 'r')
 
-    I_tr = data['I_tr'][:].T
-    T_tr = data['T_tr'][:].T
-    L_tr = data['L_tr'][:].T
+    I_tr = data['I_tr'][:].T # training visual
+    T_tr = data['T_tr'][:].T # training textual
+    L_tr = data['L_tr'][:].T # training categories
 
-    I_db = data['I_db'][:].T
-    T_db = data['T_db'][:].T
-    L_db = data['L_db'][:].T
+    I_db = data['I_db'][:].T # retrieval visual
+    T_db = data['T_db'][:].T # retrieval textual
+    L_db = data['L_db'][:].T # retrieval categories
 
-    I_te = data['I_te'][:].T
-    T_te = data['T_te'][:].T
-    L_te = data['L_te'][:].T
+    I_te = data['I_te'][:].T # query visual
+    T_te = data['T_te'][:].T # query textual
+    L_te = data['L_te'][:].T # query categories
 
     return dataset_tuple(I_tr=I_tr, T_tr=T_tr, L_tr=L_tr,
                          I_db=I_db, T_db=T_db, L_db=L_db,

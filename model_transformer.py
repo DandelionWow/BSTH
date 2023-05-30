@@ -32,7 +32,7 @@ class GMMH(nn.Module):
 
         self.imageConcept = nn.Linear(self.common_dim, self.common_dim * self.nbit)
         self.textConcept = nn.Linear(self.common_dim, self.common_dim * self.nbit)
-
+        
         self.imagePosEncoder = PositionalEncoding(d_model=self.common_dim, dropout=self.dropout)
         self.textPosEncoder = PositionalEncoding(d_model=self.common_dim, dropout=self.dropout)
 
@@ -49,16 +49,17 @@ class GMMH(nn.Module):
                                                    dim_feedforward=self.common_dim,
                                                    activation=self.act,
                                                    dropout=self.dropout)
-        textEncoderNorm = nn.LayerNorm(normalized_shape=self.common_dim)
+        textEncoderNorm = nn.LayerNorm(normalized_shape=self.common_dim) # 与BatchNorm不同的是它是对每单个batch进行的归一化
         self.textTransformerEncoder = TransformerEncoder(encoder_layer=textEncoderLayer, num_layers=self.num_layer, norm=textEncoderNorm)
 
         self.hash = nn.Sequential(
-            nn.Conv2d(in_channels=self.nbit * self.common_dim, out_channels=self.nbit * self.common_dim // 2, kernel_size=1, groups=self.nbit),
-            nn.BatchNorm2d(self.nbit * self.common_dim // 2),
-            nn.Tanh(),
+            nn.Conv2d(in_channels=self.nbit * self.common_dim, out_channels=self.nbit * self.common_dim // 2, kernel_size=1, groups=self.nbit), # 二维卷积
+            nn.BatchNorm2d(self.nbit * self.common_dim // 2), # 卷积层之后添加BatchNorm2d进行数据的归一化处理
+            nn.Tanh(), # 双曲正切，激活函数
             nn.Conv2d(in_channels=self.nbit * self.common_dim // 2, out_channels=self.nbit, kernel_size=1, groups=self.nbit),
             nn.Tanh()
         )
+
         self.classify = nn.Linear(self.nbit, self.classes)
 
     def _initialize(self):
@@ -69,21 +70,21 @@ class GMMH(nn.Module):
     def forward(self, image, text, tgt=None):
         self.batch_size = len(image)
 
-        imageH = self.imageMLP(image)
-        textH = self.textMLP(text)
+        imageH = self.imageMLP(image) # 公式(1)
+        textH = self.textMLP(text) # 公式(1)
 
-        imageC = self.imageConcept(imageH).reshape(imageH.size(0), self.nbit, self.common_dim).permute(1, 0, 2) # (nbit, bs, dim)
-        textC = self.textConcept(textH).reshape(textH.size(0), self.nbit, self.common_dim).permute(1, 0, 2) # (nbit, bs, dim)
+        imageC = self.imageConcept(imageH).reshape(imageH.size(0), self.nbit, self.common_dim).permute(1, 0, 2) # (nbit, bs, dim) 公式(2)的第一步线性投影+第二步重塑操作
+        textC = self.textConcept(textH).reshape(textH.size(0), self.nbit, self.common_dim).permute(1, 0, 2) # (nbit, bs, dim) 公式(2)的第一步线性投影+第二步重塑操作
+        
+        imageSrc = self.imagePosEncoder(imageC) # 公式(3)的第一步
+        textSrc = self.textPosEncoder(textC) # 公式(3)的第一步
+        imageMemory = self.imageTransformerEncoder(imageSrc) # 公式(3)的二三步
+        textMemory = self.textTransformerEncoder(textSrc) # 公式(3)的二三步
 
-        imageSrc = self.imagePosEncoder(imageC)
-        textSrc = self.textPosEncoder(textC)
+        memory = imageMemory + textMemory # 公式(4)多模态融合
 
-        imageMemory = self.imageTransformerEncoder(imageSrc)
-        textMemory = self.textTransformerEncoder(textSrc)
-        memory = imageMemory + textMemory
-
-        code = self.hash(memory.permute(1, 0, 2).reshape(self.batch_size, self.nbit * self.common_dim, 1, 1)).squeeze()
-        return code, self.classify(code)
+        code = self.hash(memory.permute(1, 0, 2).reshape(self.batch_size, self.nbit * self.common_dim, 1, 1)).squeeze() # 公式(6)
+        return code, self.classify(code) # 公式(8)
 
 
 # Check in 2022-1-4
@@ -118,15 +119,16 @@ class L2H_Prototype(nn.Module):
         self.batch_size = label.size(0)
 
         index = torch.arange(1, self.classes+1).cuda().unsqueeze(dim=0) # [N=1, C]
-        label_embedding = self.labelEmbedding(index) # (N=1, C, K) without padding index
-        memory = self.labelTransformerEncoder(label_embedding.permute(1, 0, 2)) # (C, 1, K)
+        label_embedding = self.labelEmbedding(index) # 公式(9) (N=1, C, K) without padding index
+        
+        memory = self.labelTransformerEncoder(label_embedding.permute(1, 0, 2)) # 公式(10,11) (C, 1, K)
 
-        prototype = self.hash(memory.permute(1, 0, 2).reshape(1, self.classes * self.nbit, 1, 1)).squeeze()
-        prototype = prototype.squeeze().reshape(self.classes, self.nbit)
+        prototype = self.hash(memory.permute(1, 0, 2).reshape(1, self.classes * self.nbit, 1, 1)).squeeze() # 公式(12)
+        prototype = prototype.squeeze().reshape(self.classes, self.nbit) # 公式(12)
 
-        code = torch.matmul(label, prototype)
+        code = torch.matmul(label, prototype) # 公式(13)
 
-        pred = self.classify(code)
+        pred = self.classify(code) # 公式(15)，缺个激活函数
         return prototype, code, pred
 
 

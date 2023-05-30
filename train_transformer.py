@@ -16,7 +16,7 @@ def train(args, dset):
     assert dset.I_tr.shape[0] == dset.L_tr.shape[0]
 
     ## Defination[Check in 2022-1-3]
-    loss_l2 = torch.nn.MSELoss()
+    loss_l2 = torch.nn.MSELoss() # 均方误差，L2范数
     loss_cl = torch.nn.MultiLabelSoftMarginLoss()
 
     l2h = L2H_Prototype(args=args)
@@ -31,7 +31,7 @@ def train(args, dset):
     start_time = time.time() * 1000
 
     ## Preprocess[Check in 2022-1-3]
-    _, COO_matrix = get_COO_matrix(dset.L_tr)
+    _, COO_matrix = get_COO_matrix(dset.L_tr) # 求归一化的co-occurrence statistic matrix
     COO_matrix = torch.Tensor(COO_matrix).cuda()
     train_label = torch.Tensor(dset.L_tr).cuda()
 
@@ -40,15 +40,15 @@ def train(args, dset):
         prototype, code, pred = l2h(train_label)
 
         optimizer_L2H.zero_grad()
-        B = torch.sign(code)
+        B = torch.sign(code) # 公式(14)
         prototype_norm = F.normalize(prototype)
 
-        recon_loss = loss_l2(torch.sigmoid(pred), train_label) * args.param_recon_pre
-        sign_loss = loss_l2(code, B) * args.param_sign_pre
-        bal_loss = torch.sum(code) / code.size(0) * args.param_bal_pre
-        static_loss = loss_l2(prototype_norm.mm(prototype_norm.t()), COO_matrix) * args.param_static_pre
+        recon_loss = loss_l2(torch.sigmoid(pred), train_label) * args.param_recon_pre # 公式(15)(21)
+        sign_loss = loss_l2(code, B) * args.param_sign_pre # 公式(22)
+        bal_loss = torch.sum(code) / code.size(0) * args.param_bal_pre # 公式(24)
+        static_loss = loss_l2(prototype_norm.mm(prototype_norm.t()), COO_matrix) * args.param_static_pre # 公式(23)
 
-        loss = recon_loss + sign_loss + bal_loss + static_loss
+        loss = recon_loss + sign_loss + bal_loss + static_loss # 公式(25)
 
         loss.backward()
         optimizer_L2H.step()
@@ -56,7 +56,7 @@ def train(args, dset):
     l2h.eval() # to evaluate
     B_tr = np.sign(l2h(train_label)[1].data.cpu().numpy()) # binary
 
-    map_train = calculate_map(B_tr, B_tr, dset.L_tr, dset.L_tr)
+    map_train = calculate_map(B_tr, B_tr, dset.L_tr, dset.L_tr) # 计算平均精度(mean Average Precision, mAP)
     print('Training MAP: %.4f' % (map_train))
     print('=' * 30)
 
@@ -68,12 +68,12 @@ def train(args, dset):
 
     for epoch in range(args.epochs):
         for i, (idx, img_feat, txt_feat, label, B_gnd) in enumerate(train_loader):
-            _, aff_norm, aff_label = affinity_tag_multi(label.numpy(), label.numpy())
+            _, aff_norm, aff_label = affinity_tag_multi(label.numpy(), label.numpy()) # 公式(19)
 
-            img_feat = img_feat.cuda()
-            txt_feat = txt_feat.cuda()
-            label = label.cuda()
-            B_gnd = B_gnd.cuda()
+            img_feat = img_feat.cuda() # 图像特征
+            txt_feat = txt_feat.cuda() # 文本特征
+            label = label.cuda() # 标签
+            B_gnd = B_gnd.cuda() # 哈希码
 
             aff_label = torch.Tensor(aff_label).cuda()
 
@@ -81,11 +81,11 @@ def train(args, dset):
             H, pred = gmmh(img_feat, txt_feat)
             H_norm = F.normalize(H)
 
-            clf_loss = loss_l2(torch.sigmoid(pred), label)
-            sign_loss = loss_l2(H, B_gnd)
-            similarity_loss = loss_l2(H_norm.mm(H_norm.t()), aff_label)
+            clf_loss = loss_l2(torch.sigmoid(pred), label) # 公式(16)
+            sign_loss = loss_l2(H, B_gnd) # 公式(17)
+            similarity_loss = loss_l2(H_norm.mm(H_norm.t()), aff_label) # 公式(18)
 
-            loss = clf_loss * args.param_clf + sign_loss * args.param_sign + similarity_loss * args.param_sim
+            loss = clf_loss * args.param_clf + sign_loss * args.param_sign + similarity_loss * args.param_sim # 公式(20)
 
             loss.backward()
             optimizer.step()
@@ -195,7 +195,7 @@ if __name__ == '__main__':
     parser.add_argument('--trans_act', type=str, default='gelu', help='"activation" in Transformer.')
 
     ## Data params
-    parser.add_argument('--dataset', type=str, default='flickr', help='coco/nuswide/flickr')
+    parser.add_argument('--dataset', type=str, default='coco', help='coco/nuswide/flickr')
     parser.add_argument('--classes', type=int, default=24)
     parser.add_argument('--image_dim', type=int, default=4096)
     parser.add_argument('--text_dim', type=int, default=1386)
